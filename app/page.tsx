@@ -1,30 +1,48 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import mqtt from 'mqtt'
 
 const BROKER_URL = 'ws://43.202.237.62:9001'
 const TOPIC_COMMAND = 'home/light/command'
 const TOPIC_STATUS = 'home/light/status'
 
-// MQTT 인증 정보
-const MQTT_USERNAME = 'maru'
-const MQTT_PASSWORD = 'maru1234'
+function parseJwt(token: string) {
+  try {
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    return JSON.parse(atob(base64))
+  } catch {
+    return null
+  }
+}
 
 export default function Home() {
+  const router = useRouter()
   const [client, setClient] = useState<mqtt.MqttClient | null>(null)
   const [connected, setConnected] = useState(false)
   const [lightOn, setLightOn] = useState(false)
   const [brightness, setBrightness] = useState(255)
 
   useEffect(() => {
+    const token = localStorage.getItem('maru-token')
+    if (!token) {
+      router.push('/login')
+      return
+    }
+
+    const payload = parseJwt(token)
+    if (!payload) {
+      router.push('/login')
+      return
+    }
+
     const mqttClient = mqtt.connect(BROKER_URL, {
-      username: MQTT_USERNAME,
-      password: MQTT_PASSWORD,
+      username: payload.mqttUsername,
+      password: payload.mqttPassword,
     })
 
     mqttClient.on('connect', () => {
-      console.log('MQTT 연결 완료')
       setConnected(true)
       mqttClient.subscribe(TOPIC_STATUS)
     })
@@ -45,7 +63,7 @@ export default function Home() {
     mqttClient.on('disconnect', () => setConnected(false))
     setClient(mqttClient)
     return () => { mqttClient.end() }
-  }, [])
+  }, [router])
 
   const sendCommand = (action: string, value?: number) => {
     if (!client || !connected) return
@@ -66,9 +84,22 @@ export default function Home() {
     setLightOn(value > 0)
   }
 
+  const handleLogout = () => {
+    localStorage.removeItem('maru-token')
+    router.push('/login')
+  }
+
   return (
     <main className="min-h-screen bg-gray-900 flex flex-col items-center justify-center gap-8 px-6">
-      <h1 className="text-4xl font-bold text-white">maru 스마트홈</h1>
+      <div className="w-full max-w-sm flex justify-between items-center">
+        <h1 className="text-4xl font-bold text-white">maru 🦆</h1>
+        <button
+          onClick={handleLogout}
+          className="text-gray-400 hover:text-white text-sm transition"
+        >
+          로그아웃
+        </button>
+      </div>
 
       <div className="flex items-center gap-2">
         <div className={`w-3 h-3 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`} />
