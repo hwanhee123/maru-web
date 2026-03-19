@@ -7,6 +7,10 @@ const BROKER_URL = 'ws://43.202.237.62:9001'
 const TOPIC_COMMAND = 'home/light/command'
 const TOPIC_STATUS = 'home/light/status'
 
+// MQTT 인증 정보
+const MQTT_USERNAME = 'maru'
+const MQTT_PASSWORD = 'maru1234'
+
 export default function Home() {
   const [client, setClient] = useState<mqtt.MqttClient | null>(null)
   const [connected, setConnected] = useState(false)
@@ -14,7 +18,10 @@ export default function Home() {
   const [brightness, setBrightness] = useState(255)
 
   useEffect(() => {
-    const mqttClient = mqtt.connect(BROKER_URL)
+    const mqttClient = mqtt.connect(BROKER_URL, {
+      username: MQTT_USERNAME,
+      password: MQTT_PASSWORD,
+    })
 
     mqttClient.on('connect', () => {
       console.log('MQTT 연결 완료')
@@ -24,14 +31,11 @@ export default function Home() {
 
     mqttClient.on('message', (topic, payload) => {
       const message = payload.toString()
-      console.log(`수신 [${topic}]: ${message}`)
       if (topic === TOPIC_STATUS) {
         try {
           const data = JSON.parse(message)
           setLightOn(data.status === 'ON')
-          if (data.brightness !== undefined) {
-            setBrightness(data.brightness)
-          }
+          if (data.brightness !== undefined) setBrightness(data.brightness)
         } catch {
           setLightOn(message.includes('ON'))
         }
@@ -39,7 +43,6 @@ export default function Home() {
     })
 
     mqttClient.on('disconnect', () => setConnected(false))
-
     setClient(mqttClient)
     return () => { mqttClient.end() }
   }, [])
