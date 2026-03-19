@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import mqtt from 'mqtt'
 
-const BROKER_URL = 'ws://3.38.211.16:9001'
+const BROKER_URL = 'ws://43.202.237.62:9001'
 const TOPIC_COMMAND = 'home/light/command'
 const TOPIC_STATUS = 'home/light/status'
 
@@ -11,6 +11,7 @@ export default function Home() {
   const [client, setClient] = useState<mqtt.MqttClient | null>(null)
   const [connected, setConnected] = useState(false)
   const [lightOn, setLightOn] = useState(false)
+  const [brightness, setBrightness] = useState(255)
 
   useEffect(() => {
     const mqttClient = mqtt.connect(BROKER_URL)
@@ -25,44 +26,59 @@ export default function Home() {
       const message = payload.toString()
       console.log(`수신 [${topic}]: ${message}`)
       if (topic === TOPIC_STATUS) {
-        setLightOn(message.includes('ON'))
+        try {
+          const data = JSON.parse(message)
+          setLightOn(data.status === 'ON')
+          if (data.brightness !== undefined) {
+            setBrightness(data.brightness)
+          }
+        } catch {
+          setLightOn(message.includes('ON'))
+        }
       }
     })
 
-    mqttClient.on('disconnect', () => {
-      setConnected(false)
-    })
+    mqttClient.on('disconnect', () => setConnected(false))
 
     setClient(mqttClient)
-
-    return () => {
-      mqttClient.end()
-    }
+    return () => { mqttClient.end() }
   }, [])
 
-  const toggleLight = (on: boolean) => {
+  const sendCommand = (action: string, value?: number) => {
     if (!client || !connected) return
-    const payload = JSON.stringify({ action: on ? 'ON' : 'OFF' })
+    const payload = value !== undefined
+      ? JSON.stringify({ action, value })
+      : JSON.stringify({ action })
     client.publish(TOPIC_COMMAND, payload)
+  }
+
+  const toggleLight = (on: boolean) => {
+    sendCommand(on ? 'ON' : 'OFF')
     setLightOn(on)
   }
 
+  const handleBrightness = (value: number) => {
+    setBrightness(value)
+    sendCommand('BRIGHTNESS', value)
+    setLightOn(value > 0)
+  }
+
   return (
-    <main className="min-h-screen bg-gray-900 flex flex-col items-center justify-center gap-8">
+    <main className="min-h-screen bg-gray-900 flex flex-col items-center justify-center gap-8 px-6">
       <h1 className="text-4xl font-bold text-white">maru 스마트홈</h1>
 
-      {/* 연결 상태 */}
       <div className="flex items-center gap-2">
         <div className={`w-3 h-3 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`} />
         <span className="text-gray-300">{connected ? '브로커 연결됨' : '연결 중...'}</span>
       </div>
 
-      {/* 전구 아이콘 */}
-      <div className={`text-9xl transition-all duration-300 ${lightOn ? 'opacity-100' : 'opacity-20'}`}>
+      <div
+        className="text-9xl transition-all duration-300"
+        style={{ opacity: lightOn ? brightness / 255 * 0.8 + 0.2 : 0.15 }}
+      >
         💡
       </div>
 
-      {/* 제어 버튼 */}
       <div className="flex gap-4">
         <button
           onClick={() => toggleLight(true)}
@@ -78,6 +94,26 @@ export default function Home() {
         >
           끄기
         </button>
+      </div>
+
+      <div className="w-full max-w-sm flex flex-col gap-3">
+        <div className="flex justify-between text-gray-300 text-sm">
+          <span>밝기</span>
+          <span>{Math.round(brightness / 255 * 100)}%</span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={255}
+          value={brightness}
+          onChange={(e) => handleBrightness(Number(e.target.value))}
+          disabled={!connected}
+          className="w-full accent-yellow-400 disabled:opacity-40"
+        />
+        <div className="flex justify-between text-gray-500 text-xs">
+          <span>0%</span>
+          <span>100%</span>
+        </div>
       </div>
     </main>
   )
